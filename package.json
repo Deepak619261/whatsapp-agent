@@ -1,0 +1,22 @@
+{
+  "name": "1prompt-setter-demo",
+  "version": "1.0.0",
+  "description": "Local demo of the 1prompt-os AI-setter conversation pattern over real WhatsApp (Twilio), with a swappable AI provider (Claude / OpenAI / Gemini).",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "openai": "^4.104.0",
+    "twilio": "^5.10.2"
+  }
+}

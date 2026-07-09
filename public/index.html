@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>1prompt Setter — Control Panel</title>
+  <style>
+    :root {
+      --bg: #0f1420; --panel: #171d2b; --panel2: #1e2637; --border: #2a3346;
+      --text: #e6e9f0; --muted: #8b95a9; --accent: #4f8cff; --accent2: #26c281;
+      --in: #ffb454; --out: #4f8cff; --sys: #8b95a9; --deb: #b58cff;
+      --typ: #26c281; --err: #ff5c6c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    header {
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      padding: 14px 22px; background: var(--panel); border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .pill {
+      font-size: 12px; padding: 3px 10px; border-radius: 999px;
+      background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .pill b { color: var(--text); font-weight: 600; }
+    .pill.ok b { color: var(--accent2); }
+    .pill.warn b { color: var(--err); }
+    main { display: grid; grid-template-columns: 360px 1fr; gap: 18px; padding: 18px 22px; max-width: 1200px; margin: 0 auto; }
+    @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 14px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+    input[type=text], input[type=number] {
+      width: 100%; padding: 9px 11px; background: var(--panel2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 14px;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    button {
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 14px;
+    }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.ghost { background: var(--panel2); border: 1px solid var(--border); color: var(--text); margin: 6px 6px 0 0; padding: 7px 12px; font-weight: 500; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .row input[type=number] { width: 120px; }
+    .switch { display: flex; align-items: center; gap: 8px; margin-top: 12px; cursor: pointer; }
+    .switch input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+    .note code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+    .msg { color: var(--err); font-size: 13px; margin-top: 10px; min-height: 16px; }
+    .msg.ok { color: var(--accent2); }
+
+    #log { height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .ev { display: flex; gap: 10px; align-items: baseline; padding: 7px 10px; border-radius: 8px; background: var(--panel2); border-left: 3px solid var(--border); }
+    .ev .t { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ev .who { font-size: 11px; color: var(--muted); min-width: 70px; }
+    .ev .body { flex: 1; }
+    .ev.inbound { border-left-color: var(--in); }
+    .ev.outbound { border-left-color: var(--out); }
+    .ev.debounce { border-left-color: var(--deb); color: var(--deb); font-style: italic; }
+    .ev.typing { border-left-color: var(--typ); color: var(--typ); font-style: italic; }
+    .ev.grouped { border-left-color: var(--deb); color: var(--muted); }
+    .ev.system { border-left-color: var(--sys); color: var(--muted); }
+    .ev.error { border-left-color: var(--err); color: var(--err); }
+    .ev .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 1px 6px; border-radius: 4px; background: var(--panel); color: var(--muted); }
+    .leads { display: flex; flex-direction: column; gap: 6px; }
+    .lead { font-size: 13px; padding: 8px 10px; background: var(--panel2); border-radius: 8px; display: flex; justify-content: space-between; }
+    .lead .num { color: var(--muted); font-size: 12px; }
+    .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 1prompt Setter — Control Panel</h1>
+    <span class="pill">provider <b id="p-provider">…</b></span>
+    <span class="pill">model <b id="p-model">…</b></span>
+    <span class="pill" id="p-twilio">twilio <b>…</b></span>
+    <span class="pill">debounce <b id="p-debounce">…</b></span>
+  </header>
+
+  <main>
+    <div>
+      <div class="card">
+        <h2>New lead → AI sends first WhatsApp</h2>
+        <label>Name</label>
+        <input type="text" id="f-name" placeholder="Jordan" />
+        <label>WhatsApp number (E.164)</label>
+        <input type="text" id="f-number" placeholder="+15551234567" />
+        <label>What are they interested in?</label>
+        <input type="text" id="f-interest" placeholder="losing weight before summer" />
+        <button id="f-submit">Start conversation</button>
+        <div class="msg" id="f-msg"></div>
+        <div class="note">The lead must have joined the Twilio WhatsApp sandbox first
+          (send <code>join &lt;code&gt;</code> to the sandbox number). See the README.</div>
+      </div>
+
+      <div class="card">
+        <h2>Humanization controls</h2>
+        <label>Debounce window (ms) — group rapid messages, answer once</label>
+        <div class="row">
+          <input type="number" id="c-debounce" min="0" step="500" />
+          <button class="ghost" data-deb="8000">8s (demo)</button>
+          <button class="ghost" data-deb="60000">60s (their default)</button>
+        </div>
+        <label class="switch"><input type="checkbox" id="c-split" /> Split longer replies into 2 messages</label>
+        <button id="c-save">Apply</button>
+        <div class="msg" id="c-msg"></div>
+        <div class="note">1prompt-os debounces <b>60s</b> in production. This demo defaults to
+          <b>8s</b> so you can show it live. See NOTES.md.</div>
+      </div>
+
+      <div class="card">
+        <h2>Leads</h2>
+        <div class="leads" id="leads"><div class="empty">No leads yet.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Live conversation log</h2>
+      <div id="log"></div>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const logEl = $('log');
+    const fmtTime = (ts) => new Date(ts).toLocaleTimeString();
+
+    function renderConfig(cfg) {
+      $('c-debounce').value = cfg.debounceMs;
+      $('c-split').checked = cfg.splitMessages;
+      $('p-debounce').textContent = (cfg.debounceMs / 1000) + 's';
+    }
+    function renderProvider(p) {
+      if (!p) return;
+      $('p-provider').textContent = p.name;
+      $('p-model').textContent = p.model;
+    }
+    function renderLeads(leads) {
+      if (!leads || !leads.length) { $('leads').innerHTML = '<div class="empty">No leads yet.</div>'; return; }
+      $('leads').innerHTML = leads.map(l =>
+        `<div class="lead"><span>${escapeHtml(l.name || 'Lead')} · ${l.turns} turns` +
+        `${l.interest ? ' · ' + escapeHtml(l.interest) : ''}</span><span class="num">${escapeHtml(l.number)}</span></div>`
+      ).join('');
+    }
+    function addEvent(e) {
+      const div = document.createElement('div');
+      div.className = 'ev ' + (e.type || 'system');
+      const who = e.name || (e.number || '');
+      div.innerHTML =
+        `<span class="t">${fmtTime(e.ts)}</span>` +
+        `<span class="tag">${e.type}</span>` +
+        `<span class="who">${escapeHtml(who)}</span>` +
+        `<span class="body">${escapeHtml(e.text || '')}</span>`;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // --- SSE live feed ---
+    const es = new EventSource('/events');
+    es.addEventListener('snapshot', (m) => {
+      const s = JSON.parse(m.data);
+      renderProvider(s.provider);
+      renderConfig(s.config);
+      renderLeads(s.leads);
+      const tw = $('p-twilio');
+      const ch = s.channel || { name: 'twilio', ready: false };
+      tw.className = 'pill ' + (ch.ready ? 'ok' : 'warn');
+      tw.innerHTML = ch.name + ' <b>' + (ch.ready ? 'ready' : 'not set') + '</b>';
+      logEl.innerHTML = '';
+      (s.log || []).forEach(addEvent);
+    });
+    es.addEventListener('log', (m) => addEvent(JSON.parse(m.data)));
+    es.addEventListener('leads', (m) => renderLeads(JSON.parse(m.data)));
+    es.addEventListener('config', (m) => renderConfig(JSON.parse(m.data)));
+
+    // --- Lead form ---
+    $('f-submit').addEventListener('click', async () => {
+      const btn = $('f-submit'); const msg = $('f-msg');
+      msg.className = 'msg'; msg.textContent = '';
+      const payload = { name: $('f-name').value.trim(), number: $('f-number').value.trim(), interest: $('f-interest').value.trim() };
+      if (!payload.number) { msg.textContent = 'Enter a WhatsApp number.'; return; }
+      btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        const r = await fetch('/api/lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Failed');
+        msg.className = 'msg ok'; msg.textContent = 'First message sent to ' + payload.number + ' 👋';
+        $('f-name').value = ''; $('f-number').value = ''; $('f-interest').value = '';
+      } catch (err) {
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false; btn.textContent = 'Start conversation';
+      }
+    });
+
+    // --- Config ---
+    document.querySelectorAll('[data-deb]').forEach(b =>
+      b.addEventListener('click', () => { $('c-debounce').value = b.dataset.deb; }));
+    $('c-save').addEventListener('click', async () => {
+      const msg = $('c-msg'); msg.className = 'msg'; msg.textContent = '';
+      const body = { debounceMs: parseInt($('c-debounce').value, 10), splitMessages: $('c-split').checked };
+      try {
+        const r = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const cfg = await r.json();
+        renderConfig(cfg);
+        msg.className = 'msg ok'; msg.textContent = 'Applied.';
+        setTimeout(() => { msg.textContent = ''; }, 1500);
+      } catch (err) { msg.textContent = err.message; }
+    });
+  </script>
+</body>
+</html>
