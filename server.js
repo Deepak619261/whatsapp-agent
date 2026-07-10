@@ -103,7 +103,7 @@ if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
   console.warn('⚠️  ADMIN_EMAIL / ADMIN_PASSWORD not set — control panel is LOCKED (all non-webhook requests denied). Set them in .env / host env.');
 }
 app.use((req, res, next) => {
-  if (req.path.startsWith('/webhook')) return next(); // Meta webhook must stay open
+  if (req.path.startsWith('/webhook') || req.path === '/health') return next(); // webhook + health check stay open
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
     return res.status(401).send('Admin auth not configured');
   }
@@ -120,6 +120,9 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Public health check — for the host's health probe + uptime monitors (no auth).
+app.get('/health', (req, res) => res.status(200).json({ ok: true }));
 
 // --- Cloud API webhook verification (Meta sends a GET challenge) ------------
 app.get('/webhook/whatsapp', (req, res) => {
