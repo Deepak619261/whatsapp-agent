@@ -77,6 +77,38 @@
     .btn-toggle.active { border-color: var(--accent2); color: var(--accent2); }
     .btn-toggle.inactive { border-color: var(--err); color: var(--err); }
     .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+
+    /* Clickable lead → conversation modal */
+    .lead-info { cursor: pointer; }
+    .lead-info:hover b { color: var(--accent); }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      width: 100%; max-width: 560px; max-height: 82vh; display: flex; flex-direction: column;
+    }
+    .modal-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+    }
+    .modal-head b { font-size: 15px; }
+    .modal-head .num { color: var(--muted); font-size: 12px; margin-left: 8px; }
+    .modal-close {
+      background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 4px 11px; margin: 0; cursor: pointer; font-weight: 600;
+    }
+    .modal-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .bubble {
+      max-width: 80%; padding: 9px 13px; border-radius: 14px; font-size: 14px;
+      white-space: pre-wrap; word-wrap: break-word; line-height: 1.45;
+    }
+    .bubble.user { align-self: flex-start; background: var(--panel2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+    .bubble.assistant { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .bubble .role { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; opacity: .7; margin-bottom: 3px; }
+    .convo-empty { color: var(--muted); text-align: center; padding: 22px; }
   </style>
 </head>
 <body>
@@ -131,6 +163,17 @@
     </div>
   </main>
 
+  <!-- Per-lead conversation (opens when you click a lead) -->
+  <div class="modal-backdrop" id="convo-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <div><b id="convo-name">Lead</b><span class="num" id="convo-num"></span></div>
+        <button class="modal-close" id="convo-close">✕ Close</button>
+      </div>
+      <div class="modal-body" id="convo-body"></div>
+    </div>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     const logEl = $('log');
@@ -152,7 +195,7 @@
         const btnClass = l.active ? 'btn-toggle active' : 'btn-toggle inactive';
         const btnLabel = l.active ? 'AI Active' : 'AI Paused';
         return `<div class="lead">
-          <div class="lead-info">
+          <div class="lead-info" onclick="openConversation('${escapeHtml(l.number)}')" title="View full conversation">
             <span><b>${escapeHtml(l.name || 'Lead')}</b> · ${l.turns} turns</span>
             <span class="num">${escapeHtml(l.number)}${l.interest ? ' · ' + escapeHtml(l.interest) : ''}</span>
           </div>
@@ -162,6 +205,46 @@
         </div>`;
       }).join('');
     }
+
+    // --- Per-lead conversation view ---
+    let openNumber = null;
+    let openTurns = -1; // turn count of the currently-open lead, to detect real changes
+    async function openConversation(number) {
+      openNumber = number;
+      const modal = $('convo-modal'), body = $('convo-body');
+      modal.classList.add('open');
+      body.innerHTML = '<div class="convo-empty">Loading…</div>';
+      try {
+        const r = await fetch('/api/lead/history?number=' + encodeURIComponent(number));
+        if (!r.ok) throw new Error((await r.json()).error || 'Failed to load');
+        const data = await r.json();
+        if (openNumber !== number) return; // a newer click won the race
+        $('convo-name').textContent = data.name || 'Lead';
+        $('convo-num').textContent = data.number + (data.interest ? ' · ' + data.interest : '');
+        if (!data.history || !data.history.length) {
+          body.innerHTML = '<div class="convo-empty">No messages yet.</div>';
+          return;
+        }
+        body.innerHTML = data.history.map(m => {
+          const isAI = m.role === 'assistant';
+          const who = isAI ? 'Setter' : (data.name || 'Lead');
+          return `<div class="bubble ${isAI ? 'assistant' : 'user'}">` +
+            `<span class="role">${escapeHtml(who)}</span>${escapeHtml(m.content || '')}</div>`;
+        }).join('');
+        openTurns = data.history.length;
+        body.scrollTop = body.scrollHeight;
+      } catch (err) {
+        body.innerHTML = '<div class="convo-empty">' + escapeHtml(err.message) + '</div>';
+      }
+    }
+    function closeConversation() {
+      openNumber = null;
+      openTurns = -1;
+      $('convo-modal').classList.remove('open');
+    }
+    $('convo-close').addEventListener('click', closeConversation);
+    $('convo-modal').addEventListener('click', (e) => { if (e.target.id === 'convo-modal') closeConversation(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeConversation(); });
 
     async function toggleLead(number, newActive) {
       try {
@@ -209,7 +292,16 @@
       (s.log || []).forEach(addEvent);
     });
     es.addEventListener('log', (m) => addEvent(JSON.parse(m.data)));
-    es.addEventListener('leads', (m) => renderLeads(JSON.parse(m.data)));
+    es.addEventListener('leads', (m) => {
+      const leads = JSON.parse(m.data);
+      renderLeads(leads);
+      // Only refresh the open modal when THAT lead's own conversation changed —
+      // a reply from a different lead won't disturb the chat you're reading.
+      if (openNumber) {
+        const cur = leads.find(l => l.number === openNumber);
+        if (cur && cur.turns !== openTurns) openConversation(openNumber);
+      }
+    });
     es.addEventListener('config', (m) => renderConfig(JSON.parse(m.data)));
 
     // --- Lead form ---

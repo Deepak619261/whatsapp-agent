@@ -234,6 +234,25 @@ app.post('/api/lead/toggle', (req, res) => {
   res.json({ ok: true, lead: { id: lead.id, number: lead.number, active: lead.active } });
 });
 
+// --- Full conversation history for one lead (control panel: click a lead) ---
+app.get('/api/lead/history', (req, res) => {
+  const number = req.query.number;
+  if (!number) {
+    return res.status(400).json({ error: 'number is required' });
+  }
+  const lead = store.getLead(number);
+  if (!lead) {
+    return res.status(404).json({ error: 'Lead not found' });
+  }
+  res.json({
+    number: lead.number,
+    name: lead.name,
+    interest: lead.interest,
+    active: lead.active !== false,
+    history: lead.history || [],
+  });
+});
+
 // --- Live log stream (SSE) --------------------------------------------------
 app.get('/events', (req, res) => {
   res.set({
