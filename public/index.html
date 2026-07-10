@@ -68,8 +68,14 @@
     .ev.error { border-left-color: var(--err); color: var(--err); }
     .ev .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 1px 6px; border-radius: 4px; background: var(--panel); color: var(--muted); }
     .leads { display: flex; flex-direction: column; gap: 6px; }
-    .lead { font-size: 13px; padding: 8px 10px; background: var(--panel2); border-radius: 8px; display: flex; justify-content: space-between; }
-    .lead .num { color: var(--muted); font-size: 12px; }
+    .lead { font-size: 13px; padding: 8px 10px; background: var(--panel2); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .lead-info { display: flex; flex-direction: column; gap: 2px; }
+    .lead-controls { display: flex; align-items: center; gap: 8px; }
+    .lead .num { color: var(--muted); font-size: 11px; }
+    .btn-toggle { font-size: 10px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; font-weight: 600; }
+    .btn-toggle:hover { background: var(--border); }
+    .btn-toggle.active { border-color: var(--accent2); color: var(--accent2); }
+    .btn-toggle.inactive { border-color: var(--err); color: var(--err); }
     .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
   </style>
 </head>
@@ -142,10 +148,35 @@
     }
     function renderLeads(leads) {
       if (!leads || !leads.length) { $('leads').innerHTML = '<div class="empty">No leads yet.</div>'; return; }
-      $('leads').innerHTML = leads.map(l =>
-        `<div class="lead"><span>${escapeHtml(l.name || 'Lead')} · ${l.turns} turns` +
-        `${l.interest ? ' · ' + escapeHtml(l.interest) : ''}</span><span class="num">${escapeHtml(l.number)}</span></div>`
-      ).join('');
+      $('leads').innerHTML = leads.map(l => {
+        const btnClass = l.active ? 'btn-toggle active' : 'btn-toggle inactive';
+        const btnLabel = l.active ? 'AI Active' : 'AI Paused';
+        return `<div class="lead">
+          <div class="lead-info">
+            <span><b>${escapeHtml(l.name || 'Lead')}</b> · ${l.turns} turns</span>
+            <span class="num">${escapeHtml(l.number)}${l.interest ? ' · ' + escapeHtml(l.interest) : ''}</span>
+          </div>
+          <div class="lead-controls">
+            <button class="${btnClass}" onclick="toggleLead('${l.number}', ${!l.active})">${btnLabel}</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function toggleLead(number, newActive) {
+      try {
+        const r = await fetch('/api/lead/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number, active: newActive })
+        });
+        if (!r.ok) {
+          const data = await r.json();
+          throw new Error(data.error || 'Failed to toggle status');
+        }
+      } catch (err) {
+        alert(err.message);
+      }
     }
     function addEvent(e) {
       const div = document.createElement('div');

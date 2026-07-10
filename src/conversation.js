@@ -96,7 +96,6 @@ function buildSystemPrompt(lead) {
 export function handleInbound(number, text) {
   const lead = store.getOrCreateLead(number);
   const s = stateFor(lead.id);
-  s.buffer.push(text);
 
   store.addLog({
     type: 'inbound',
@@ -106,6 +105,19 @@ export function handleInbound(number, text) {
     number: lead.id,
     text,
   });
+
+  if (lead.active === false) {
+    store.appendHistory(lead.id, 'user', text);
+    store.addLog({
+      type: 'system',
+      leadId: lead.id,
+      name: lead.name,
+      text: `AI response is paused for this lead. Saved message to history.`,
+    });
+    return;
+  }
+
+  s.buffer.push(text);
 
   const { debounceMs } = store.getConfig();
   store.addLog({
@@ -137,7 +149,19 @@ async function runProcess(key) {
   if (s.buffer.length === 0) return;
 
   const lead = store.getLead(key);
-  if (!lead) return;
+  if (!lead || lead.active === false) {
+    if (lead && lead.active === false) {
+      const grouped = s.buffer.splice(0).join('\n');
+      store.appendHistory(key, 'user', grouped);
+      store.addLog({
+        type: 'system',
+        leadId: key,
+        name: lead.name,
+        text: `lead deactivated during debounce window; flushed messages to history.`,
+      });
+    }
+    return;
+  }
 
   s.processing = true;
   // Group the burst into ONE user turn, joined with newlines (mirrors 1prompt-os).

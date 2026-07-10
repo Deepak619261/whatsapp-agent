@@ -92,6 +92,33 @@ function renderOpenerText(lead) {
 const app = express();
 app.use('/webhook', express.urlencoded({ extended: false })); // Twilio posts form-encoded
 app.use(express.json());
+
+// --- Admin auth (HTTP Basic) — protects the control panel + all /api routes.
+// The Meta webhook stays public (below) so WhatsApp can reach it.
+// Credentials come from env ONLY (no hardcoded secret in the repo). Set
+// ADMIN_EMAIL / ADMIN_PASSWORD in .env locally and as secrets on the host.
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').trim();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  console.warn('⚠️  ADMIN_EMAIL / ADMIN_PASSWORD not set — control panel is LOCKED (all non-webhook requests denied). Set them in .env / host env.');
+}
+app.use((req, res, next) => {
+  if (req.path.startsWith('/webhook')) return next(); // Meta webhook must stay open
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    return res.status(401).send('Admin auth not configured');
+  }
+  const header = req.headers.authorization || '';
+  const [scheme, encoded] = header.split(' ');
+  if (scheme === 'Basic' && encoded) {
+    const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+    const i = decoded.indexOf(':');
+    if (decoded.slice(0, i) === ADMIN_EMAIL && decoded.slice(i + 1) === ADMIN_PASSWORD) {
+      return next();
+    }
+  }
+  res.set('WWW-Authenticate', 'Basic realm="1prompt Setter"').status(401).send('Authentication required');
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Cloud API webhook verification (Meta sends a GET challenge) ------------
@@ -190,6 +217,18 @@ app.get('/api/state', (req, res) => {
 
 app.post('/api/config', (req, res) => {
   res.json(store.setConfig(req.body || {}));
+});
+
+app.post('/api/lead/toggle', (req, res) => {
+  const { number, active } = req.body || {};
+  if (!number) {
+    return res.status(400).json({ error: 'Number is required' });
+  }
+  const lead = store.toggleLeadActive(number, active);
+  if (!lead) {
+    return res.status(404).json({ error: 'Lead not found' });
+  }
+  res.json({ ok: true, lead: { id: lead.id, number: lead.number, active: lead.active } });
 });
 
 // --- Live log stream (SSE) --------------------------------------------------

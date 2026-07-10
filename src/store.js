@@ -5,6 +5,8 @@
 // rolling event log that the control panel streams over SSE.
 
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /** Normalize a WhatsApp address to bare E.164, e.g. "whatsapp:+15551234567" -> "+15551234567". */
 export function normalizeNumber(raw) {
@@ -32,6 +34,8 @@ class Store extends EventEmitter {
       typingPerCharMs: intEnv('TYPING_PER_CHAR_MS', 35),
       typingMaxMs: intEnv('TYPING_MAX_MS', 9000),
     };
+
+    this.loadLeads();
   }
 
   getConfig() {
@@ -54,6 +58,32 @@ class Store extends EventEmitter {
     return this.getConfig();
   }
 
+  loadLeads() {
+    try {
+      const dbPath = path.join(process.cwd(), 'leads.json');
+      if (fs.existsSync(dbPath)) {
+        const raw = fs.readFileSync(dbPath, 'utf8');
+        const data = JSON.parse(raw);
+        for (const [key, lead] of Object.entries(data)) {
+          if (lead.active === undefined) lead.active = true;
+          this.leads.set(key, lead);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load leads.json:', err);
+    }
+  }
+
+  saveLeads() {
+    try {
+      const dbPath = path.join(process.cwd(), 'leads.json');
+      const obj = Object.fromEntries(this.leads.entries());
+      fs.writeFileSync(dbPath, JSON.stringify(obj, null, 2), 'utf8');
+    } catch (err) {
+      console.error('Failed to save leads.json:', err);
+    }
+  }
+
   getOrCreateLead(number, { name = '', interest = '' } = {}) {
     const key = normalizeNumber(number);
     let lead = this.leads.get(key);
@@ -64,14 +94,27 @@ class Store extends EventEmitter {
         name: name || '',
         interest: interest || '',
         history: [], // [{role:'user'|'assistant', content}]
+        active: true,
         createdAt: Date.now(),
       };
       this.leads.set(key, lead);
+      this.saveLeads();
       this.emit('leads', this.listLeads());
     } else {
       // Enrich an existing lead if the form gave us new info.
-      if (name && !lead.name) lead.name = name;
-      if (interest && !lead.interest) lead.interest = interest;
+      let changed = false;
+      if (name && !lead.name) {
+        lead.name = name;
+        changed = true;
+      }
+      if (interest && !lead.interest) {
+        lead.interest = interest;
+        changed = true;
+      }
+      if (changed) {
+        this.saveLeads();
+        this.emit('leads', this.listLeads());
+      }
     }
     return lead;
   }
@@ -87,6 +130,7 @@ class Store extends EventEmitter {
       name: l.name,
       interest: l.interest,
       turns: l.history.length,
+      active: l.active !== false,
       createdAt: l.createdAt,
     }));
   }
@@ -95,6 +139,23 @@ class Store extends EventEmitter {
     const lead = this.getLead(number);
     if (!lead) return;
     lead.history.push({ role, content });
+    this.saveLeads();
+    this.emit('leads', this.listLeads());
+  }
+
+  toggleLeadActive(number, active) {
+    const lead = this.getLead(number);
+    if (!lead) return null;
+    lead.active = !!active;
+    this.saveLeads();
+    this.emit('leads', this.listLeads());
+    this.addLog({
+      type: 'system',
+      leadId: lead.id,
+      name: lead.name,
+      text: `lead ${lead.name || lead.id} AI conversation ${lead.active ? 'activated' : 'paused'}`,
+    });
+    return lead;
   }
 
   /**
